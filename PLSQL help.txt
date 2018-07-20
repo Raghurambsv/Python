@@ -1,0 +1,392 @@
+--Reversing string in query
+select listagg(substr('sweety',-level,1),'') as reverse_string from dual
+connect by level <= length('sweety')
+
+
+--Split string using REGEXP_SUBSTR
+select regexp_substr('raghu,ram,rajan,rajath','[^,]+',1,level) from dual
+connect by level <= regexp_count('raghu,ram,rajan,rajath','[^,]+')
+
+--EXCEPTION BLOCK self written
+declare 
+type num_rec is table of number;
+num_list num_rec := num_rec(10,20,30,0,40,50,0,60,70,0,80,90,0,100);
+begin
+
+forall i in num_list.first .. num_list.last save exceptions
+delete from emp where sal < sal/num_list(i);
+
+exception
+
+when others then
+for i in 1..sql%bulk_exceptions.count
+loop
+dbms_output.put_line('Error ' || i || ' occurred during '||'iteration ' ||sql%bulk_exceptions(i).error_index);
+dbms_output.put_line('Oracle error is ' || SQLERRM(-SQL%BULK_EXCEPTIONS(i).ERROR_CODE));
+end loop;
+end;
+
+
+--REF CURSOR and BULK COLLECT and EXECUTE IMMEDIATE
+DECLARE
+   TYPE EmpCurTyp IS REF CURSOR;
+   TYPE NumList IS TABLE OF NUMBER;
+   TYPE NameList IS TABLE OF VARCHAR2(25);
+   emp_cv EmpCurTyp;
+   empids NumList;
+   enames NameList;
+   sals   NumList;
+BEGIN
+   OPEN emp_cv FOR 'SELECT empno,ename FROM emp';
+   FETCH emp_cv BULK COLLECT INTO empids, enames;
+   CLOSE emp_cv;
+ 
+ for idx in 1..empids.count
+ loop
+ dbms_output.put_line('The emplid: '||empids(idx)||'and employee name is '||enames(idx));
+ end loop;
+ 
+END;
+/
+
+--EXECUTE IMMEDIATE
+declare 
+var_output_ename varchar2(30);
+var_output_empno number(10);
+var_fieldname varchar2(30);
+var_where_value1 varchar2(30);
+var_where_value2 varchar2(30);
+sql_stmt varchar2(100);
+begin
+var_where_value1 := 'KING';
+var_where_value2 := 5000;
+sql_stmt := 'select empno,ename from emp where ename = :1 or sal = :2';
+execute immediate sql_stmt into var_output_empno,var_output_ename  using var_where_value1,var_where_value2;
+dbms_output.put_line('The employee name is '||var_output_ename||'and empid :'||var_output_empno);
+end;
+
+
+--Bulk Collect
+declare
+type cll_fname is table of varchar2(10);
+all_fname cll_fname;
+
+begin
+
+select fname bulk collect  into all_fname from players;
+for idx in 1..all_fname.count
+loop
+if all_fname(idx) like 'A%' or all_fname(idx) like '%a%' then
+dbms_output.put_line('The employees naming starts with A'||all_fname(idx));
+end if;
+
+if all_fname(idx) like 'F%' then
+   dbms_output.put_line('The employees naming starts with F'||all_fname(idx));
+end if;
+
+end loop;
+end;
+
+--Indivual elements added through EXTEND in COLLECTIONS
+declare
+type cll_fname is table of varchar2(10);
+all_fname cll_fname:= cll_fname();
+cursor cur1 is
+select fname from players;
+begin
+open cur1;
+
+loop
+all_fname.extend;
+fetch cur1 into all_fname(all_fname.Last);
+exit when cur1%notfound;
+end loop;
+
+for i in all_fname.First..all_fname.Last
+loop
+dbms_output.put_line('The players name is '||all_fname(i));
+end loop;
+
+end;
+
+--For all
+declare
+type cll_fname is table of varchar2(10);
+all_fname cll_fname;
+
+begin
+
+select fname bulk collect  into all_fname from players;
+
+forall idx in 1..all_fname.count
+update players set fname='YYYY' where fname=all_fname(idx) and position='Pitcher';
+end;
+
+--NORMAL PROCEDURE
+create or replace procedure pro_department_report 
+as
+var_dname varchar2(30);
+type T_ename is table of varchar2(30);
+var_ename T_ename;
+
+cursor cur1 is
+select distinct dname from dept;
+begin
+
+open cur1;
+loop 
+
+fetch cur1 into var_dname;
+exit when cur1%notfound;
+
+select ename bulk collect into var_ename from emp where deptno
+in (select deptno from dept where dname = var_dname);
+
+dbms_output.put_line('The department '||var_dname||' as below employees');
+dbms_output.put_line('=============================================');
+if var_ename is empty then
+dbms_output.put_line('No Data Found');
+else
+for idx in 1..var_ename.count
+loop
+dbms_output.put_line(idx||':'||var_ename(idx));
+end loop;
+end if;
+
+end loop;
+
+end;
+
+--PROCEDURE WITH PARAMETER￼
+CREATE OR REPLACE PROCEDURE greetings (id in int,name out varchar2 )
+as 
+BEGIN 
+  dbms_output.put_line('The employee table details are below:');
+for rec in (select * from employees where empid=id)
+loop 
+dbms_output.put_line(rec.empid||rec.empname||rec.managerid);
+name:= 'raghu';
+end loop;
+
+END; 
+/
+
+declare
+name varchar2(20);
+begin
+greetings(1,name);
+dbms_output.put_line(name);
+end;
+
+
+begin
+for rec in (select distinct managerid from employees)
+loop
+dbms_output.put_line('For manager'||rec.managerid);
+for e in (select empid,empname from employees where managerid = rec.managerid)
+loop
+dbms_output.put_line('These are the employees he controls directly'||'  '||e.empid||'  '||e.empname);
+end loop;   
+
+end loop;
+end;
+
+
+declare
+var_fname varchar2(10);
+cursor cur1(var_fname varchar2) is
+select * from players where fname=var_fname;
+temp_rec cur1%rowtype; 
+begin
+var_fname:='%';
+open cur1(var_fname);
+
+loop
+fetch cur1 into temp_rec;
+dbms_output.put_line('The players name is'||temp_rec.fname);
+exit when cur1%notfound;
+end loop;
+
+close cur1;
+end;
+
+--Exception with save exception
+DECLARE 
+   TYPE namelist_t IS TABLE OF VARCHAR2 (5000); 
+ 
+   enames_with_errors   namelist_t 
+      := namelist_t ('ABC', 
+                     'DEF', 
+                     RPAD ('BIGBIGGERBIGGEST', 1000, 'ABC'), 
+                     'LITTLE', 
+                     RPAD ('BIGBIGGERBIGGEST', 3000, 'ABC'), 
+                     'SMITHIE'); 
+BEGIN 
+   FORALL indx IN 1 .. enames_with_errors.COUNT SAVE EXCEPTIONS 
+      UPDATE employees 
+         SET first_name = enames_with_errors (indx); 
+ 
+   ROLLBACK; 
+EXCEPTION 
+   WHEN std_errs.failure_in_forall 
+   THEN 
+      DBMS_OUTPUT.put_line (SQLERRM); 
+      DBMS_OUTPUT.put_line ( 
+         'Updated ' || SQL%ROWCOUNT || ' rows.'); 
+ 
+      FOR indx IN 1 .. SQL%BULK_EXCEPTIONS.COUNT 
+      LOOP 
+         DBMS_OUTPUT.put_line ( 
+               'Error ' 
+            || indx 
+            || ' occurred on index ' 
+            || SQL%BULK_EXCEPTIONS (indx).ERROR_INDEX 
+            || ' attempting to update name to "' 
+            || enames_with_errors ( 
+                  SQL%BULK_EXCEPTIONS (indx).ERROR_INDEX) 
+            || '"'); 
+         DBMS_OUTPUT.put_line ( 
+               'Oracle error is ' 
+            || SQLERRM ( 
+                  -1 * SQL%BULK_EXCEPTIONS (indx).ERROR_CODE)); 
+      END LOOP; 
+ 
+      ROLLBACK; 
+END; 
+
+
+
+-Function code
+create or replace function func_department_report
+return number
+is
+var_dname varchar2(30);
+var_output number(10,2) := 0;
+type T_ename is table of varchar2(30);
+var_ename T_ename;
+cursor cur1 is
+select distinct dname from dept;
+begin
+
+open cur1;
+loop 
+
+fetch cur1 into var_dname;
+exit when cur1%notfound;
+
+select ename bulk collect into var_ename from emp where deptno
+in (select deptno from dept where dname = var_dname);
+
+dbms_output.put_line('The department '||var_dname||' as below employees');
+dbms_output.put_line('=============================================');
+if var_ename is empty then
+dbms_output.put_line('No Data Found');
+else
+for idx in 1..var_ename.count
+loop
+dbms_output.put_line(idx||':'||var_ename(idx));
+end loop;
+end if;
+
+end loop;
+
+return var_output;
+end;
+
+PLSQL BLOCK WAY OF CALLING FUNCTION
+=================================
+declare
+result pls_integer;
+begin
+result:=func_department_report;
+dbms_output.put_line(result);
+end;
+
+SELECT QUERY WAY OF CALLING FUNCTION
+=================================
+declare
+result pls_integer;
+begin
+select  func_department_report into result from dual;
+end;
+
+select * from teams where state=@state ;
+
+select * from players
+
+create procedure proc_display_players()
+as
+create cursor cur_players as
+select * from players;
+begin
+
+TRIGGER and Calling function
+=================================
+create or replace function func1  
+return number 
+as 
+var1 number(10) := 10 ; 
+begin 
+delete  from emp where sal = 5000; 
+select count(*) into var1 from emp; 
+return var1; 
+end; 
+
+create trigger del_emp  
+before delete on emp 
+for each row 
+declare 
+var2 number(10); 
+begin 
+select count(*) into var2 from dual; 
+dbms_output.put_line('The count is '||var2); 
+end;
+
+
+PACKAGE AND DETAILS  (package specification is always needed)
+=====================
+create or replace package  pkg1
+as
+function func1 return number;
+procedure proc1;
+procedure proc2;
+end;
+/
+
+create or replace package body pkg1 as
+
+ 
+procedure proc1 is
+var1 number(10);
+begin
+dbms_output.put_line(' Inside procdure1');
+proc2;
+var1 := func1;
+dbms_output.put_line(' Inside procdure1 but displaying function returned value'||var1);
+end;
+
+procedure proc2 is
+begin
+dbms_output.put_line('Inside procdure2');
+end;
+
+function func1 
+return number
+is
+var_output number(10);
+begin
+dbms_output.put_line('Inside function1');
+return 10;
+end;
+
+end;
+/
+
+begin
+pkg1.proc1;
+--pkg1.proc2;
+end;
+/
+
+
+
